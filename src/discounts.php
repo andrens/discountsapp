@@ -4,140 +4,98 @@ use \Psr\Http\Message\ResponseInterface as Response;
 
 $app = new \Slim\App;
 
-$app->post('/api/discount', function (Request $request, Response $response) {
-
-	try {
+$app->post('/api/order/discount', function (Request $request, Response $response) {
 
 	    $id 		= $request->getParam('id');
 	    $customerId = $request->getParam('customer-id');
 	    $items 		= $request->getParam('items');
 	    $total		= $request->getParam('total');
 
-	    $discount 		= "";	
-	    $sumProds		= 0;
-	    $cheapest		= 0;
-	    $c 				= 0;
-	    $finalTotal		= 0;
-
 	    $orderDiscount["id"] 			= $id;
 	    $orderDiscount["customer-id"] 	= $customerId;
-	    $orderDiscount["items"] 		= $items;
 
-	    if($total < 1000) {
+	    $qtdItems 		= count($items);
+	    $products 		= new products();
+	    $rules			= new rules();
+	    $itemsObj		= new items();
+	    $sumItems		= 0;
+	    $cheap 			= 0;
+	    $cheapProdId 	= 0;
+	    $sumTotal		= 0;
 
-		    require('products.php'); //working as a database.
-		    //run all items
-		    foreach ($items as $idx => $item) {
-		    	//run an item
-		    	foreach ($item as $key => $value) {
-		    		if($key == "product-id") {
-		    			//searches the product's category
-						foreach ($prodArray as $prod) {
-							if($value == $prod->id) { 
-								$category = $prod->category; 
-							}
-						}
-						$prodId = $value;
+
+	    for ($i=0; $i < $qtdItems ; $i++) { 
+	    	$prodId 	= $items[$i]["product-id"];
+	    	$category 	= $products->getCategory($prodId);
+	    	$quantity	= $items[$i]["quantity"];
+	    	$price 		= $items[$i]["unit-price"];
+	    	$itemTotal	= $items[$i]["total"];
+
+	    	$orderDiscount["items"][$i]["product-id"] 	= $prodId;
+	    	$orderDiscount["items"][$i]["category"] 	= $category;
+	    	$orderDiscount["items"][$i]["quantity"] 	= (string)$quantity;
+	    	$orderDiscount["items"][$i]["unit-price"] 	= (string)$price;
+	    	$orderDiscount["items"][$i]["total"] 		= (string)$itemTotal;
+
+	    	$verItems[$i]	= $rules->verifyItem($prodId, $category, $quantity, $price, $cheapProdId, $cheap, $sumItems);
+	 		if($verItems[$i]) {
+	 			$applyDiscount[$verItems[$i]["cheap-product-id"]] = $verItems[$i];
+	    		$cheapProdId 	= $verItems[$i]["cheap-product-id"];
+	    		$cheap 			= $verItems[$i]["cheap"]; 
+	    		$sumItems 		= $verItems[$i]["sumItems"];
+	 		}
+	 		$sumTotal += $itemTotal;
+	    }
+	    if($total <= 1000) {
+
+	    	$totalItemsDiscount = count($applyDiscount);
+
+		    foreach ($applyDiscount as $key => $value) {
+		    	$i++;
+		    	$index = array_search($key, array_column($orderDiscount["items"], 'product-id'));
+		    	if($orderDiscount["items"][$index]["category"] == 1) {
+		    		$newQuant = $orderDiscount["items"][$index]["quantity"];
+		    		$unitPrice = $orderDiscount["items"][$index]["unit-price"];
+		    		if( $newQuant > 1) {
+
+		    			$newQuant -= 1;
+		    			$qtDiscount = 1;
+		    			$newTotal = $newQuant * $unitPrice;
+		    			$orderDiscount["items"][$index]["quantity"] = $newQuant;
+		    			$sumTotal -= $orderDiscount["items"][$index]["total"];
+		    			$orderDiscount["items"][$index]["total"]	= $newTotal;
+		    			$sumTotal += $newTotal;
+
+		    			$orderDiscount["items"][$i]["product-id"] 			= $orderDiscount["items"][$index]["product-id"];
+		    			$orderDiscount["items"][$i]["category"] 			= $orderDiscount["items"][$index]["category"];
+		    			$orderDiscount["items"][$i]["quantity"] 			= (string)$qtDiscount;
+		    			$orderDiscount["items"][$i]["unit-price"] 			= $orderDiscount["items"][$index]["unit-price"];
+		    			$orderDiscount["items"][$i]["unit-price-discount"] 	= (string)$value["price-discount"];
+		    			$orderDiscount["items"][$i]["total"] 				= (string)($value["price-discount"] * $qtDiscount);
+		    			$sumTotal += $value["price-discount"];
+		    			$orderDiscount["items"][$i]["discount"]				= "Discount - 20% discount";
+		    		} else {
+		    			$orderDiscount["items"][$index]["price-discount"] 	= $value["price-discount"];
+		    			$orderDiscount["items"][$index]["total"] 			= $value["price-discount"];
 		    		}
-		    		if($key == "quantity") {
-		    			$quant = $value;
-		    			if ($category == 2) {
-							//sixth product is free
-							if($quant >=5 ) {
-								$discount = "6th free";
-								$amountFree = floor($quant / 5);
-							}
-						} else if ($category == 1) {
-							//cheapest gets 20%
-							$sumProds += $quant;
-							if($sumProds >= 2) {
-								$discount = "cheap -20%";
-							} else {
-								$discount = "";
-							}
-						}
-		    		}
-		    		if($key == "unit-price") {
-		    			$unitPrice = $value;
-		    			if($category == 1 && $cheapest == 0) {
-		    				$cheapest = $unitPrice;
-		    				$cheapestProdId = $prodId;
-		    				$cheapestIndex = $c;
-		    			} else if($category == 1 && $sumProds >=2 ) {
-		    				if($cheapest > $unitPrice) {
-		    					$cheapest = $unitPrice;
-		    					$cheapestProdId = $prodId;
-		    					$cheapestIndex = $c;
-		    				}
-		    			}
-		    		}
-		    		if($key == "total") {
-		    			$totalItem = $value;
-		    		}
+		    	} else if($orderDiscount["items"][$index]["category"] == 2) {
+					$orderDiscount["items"][$i]["product-id"] 	= $orderDiscount["items"][$index]["product-id"];
+		    		$orderDiscount["items"][$i]["category"] 	= $orderDiscount["items"][$index]["category"];
+		    		$orderDiscount["items"][$i]["quantity"] 	= (string)$value["amountFree"];
+		    		$orderDiscount["items"][$i]["unit-price"]	= "0.00";
+		    		$orderDiscount["items"][$i]["total"] 		= "0.00";
+		    		$orderDiscount["items"][$i]["discount"]		= "Discount - 6th item free";
 		    	}
-	 
-		    	$orderDiscount["items"][$c]["product-id"] 	= $prodId;
-				$orderDiscount["items"][$c]["category"] 	= $category;
-				$orderDiscount["items"][$c]["quantity"] 	= $quant;
-				$orderDiscount["items"][$c]["unit-price"] 	= $unitPrice;
-				$orderDiscount["items"][$c]["total"] 		= $totalItem;
-				if($discount == "6th free") {
-					$c++;
-					$orderDiscount["items"][$c]["product-id"] 	= $prodId;
-					$orderDiscount["items"][$c]["category"] 	= $category;
-					$orderDiscount["items"][$c]["quantity"] 	= $amountFree;
-					$orderDiscount["items"][$c]["unit-price"] 	= "0.00";
-					$orderDiscount["items"][$c]["total"] 		= "0.00";
-					$orderDiscount["items"][$c]["discount"] 	= $discount;
-		    	}
-		    	$c++;
-		    	$finalTotal += $totalItem;
 		    }
-		    if($sumProds >= 2) {
-				if($orderDiscount["items"][$cheapestIndex]["quantity"] >= 2){
-					//verifies if the cheapest one has more than 1 unit to take out one
-					$unitPrice = $orderDiscount["items"][$cheapestIndex]["unit-price"];
-					$quantity = $orderDiscount["items"][$cheapestIndex]["quantity"] - 1;
-					$totalItem = $unitPrice * $quantity;
-					$orderDiscount["items"][$cheapestIndex]["quantity"] = $quantity;
-					$orderDiscount["items"][$cheapestIndex]["total"] = $totalItem;
-
-					$finalTotal -= $unitPrice;
-					
-					//find the last position in the array
-					end($orderDiscount["items"]);
-					$finalKey = key($orderDiscount["items"]) + 1;
-
-					//add a new item with the 20% discount
-					$orderDiscount["items"][$finalKey]["product-id"] = $prodId;
-					$orderDiscount["items"][$finalKey]["category"] = $category;
-					$orderDiscount["items"][$cheapestIndex]["quantity"] = 1;
-					$discountValue = $orderDiscount["items"][$cheapestIndex]["unit-price"];
-					$discountValue = $discountValue - ($discountValue * 0.20);
-					$orderDiscount["items"][$finalKey]["unit-price"] = $discountValue;
-					$orderDiscount["items"][$finalKey]["total"] = $discountValue;
-					$orderDiscount["items"][$finalKey]["discount"] = "20% off on the cheapest";		
-					$finalTotal += $discountValue;
-				} else {
-					$discountValue = $orderDiscount["items"][$cheapestIndex]["unit-price"];
-					$discountValue = $discountValue - ($discountValue * 0.20);
-					$orderDiscount["items"][$cheapestIndex]["unit-price"] = $discountValue;
-					$orderDiscount["items"][$cheapestIndex]["total"] = $discountValue;
-					$orderDiscount["items"][$cheapestIndex]["discount"] = "20% off on the cheapest";
-					$finalTotal += $discountValue;
-				}	
-			}
-		} else {
-
-			$orderDiscount["discount"] = '10% off';
-			$finalTotal = $total - ($total * 0.10);
-
-		}
-		
-		$orderDiscount["total"] = $finalTotal;
-		$response = json_encode($orderDiscount);
+		    $orderDiscount["total"] = (string)$sumTotal;
+	    } else {
+	    	$orderDiscount["total"] 			= $total;
+	    	$orderDiscount["discount"]			= "Discount - 10% off";
+	    	$total = $total - ($total * 0.10);
+	    	$orderDiscount["total-discount"]	= (string)$total;
+	    }
+	    
+	    $response = json_encode($orderDiscount);
 	    return $response;
-	} catch(Exception $e) {
-		echo '{"error": {"text" : '. $e->getMessage() .'}}';
-	}
+	    
 });

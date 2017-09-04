@@ -7,5 +7,8 @@ require '../vendor/autoload.php';
 $app = new \Slim\App;
 
 require "../src/discounts.php";
+require "../src/products.php";
+require "../src/items.php";
+require "../src/rules.php";
 
 $app->run();
