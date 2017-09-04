@@ -4,7 +4,7 @@ use \Psr\Http\Message\ResponseInterface as Response;
 
 $app = new \Slim\App;
 
-$app->post('/api/order/discount', function (Request $request, Response $response) {
+$app->post('/discount', function (Request $request, Response $response) {
 
 	    $id 		= $request->getParam('id');
 	    $customerId = $request->getParam('customer-id');
